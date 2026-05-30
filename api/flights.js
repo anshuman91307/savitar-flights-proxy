@@ -1,9 +1,14 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET');
-  
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   const { from, to, dep, ret, pax, cls } = req.query;
-  
+
   if (!from || !to || !dep) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
@@ -22,8 +27,11 @@ export default async function handler(req, res) {
 
   if (ret) params.append('return_date', ret);
 
-  const url = `https://serpapi.com/search?${params}`;
-  const r = await fetch(url);
-  const data = await r.json();
-  return res.json(data);
+  try {
+    const r = await fetch(`https://serpapi.com/search?${params}`);
+    const data = await r.json();
+    return res.status(200).json(data);
+  } catch (e) {
+    return res.status(500).json({ error: 'Fetch failed', detail: e.message });
+  }
 }
