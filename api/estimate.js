@@ -43,9 +43,15 @@ try { RATE_HISTORY = require('./savitar-rate-history.json'); } catch (e) { RATE_
 // an approximation for the invoice-history fallback only.
 const COUNTRY_TO_HISTORY_BUCKET = {
   'iceland': 'iceland', 'croatia': 'croatia', 'morocco': 'morocco', 'greece': 'greece',
-  'ecuador': 'galapagos', 'egypt': 'egypt', 'south africa': 'southafrica',
-  'portugal': 'portugal', 'spain': 'portugal', 'china': 'asia',
-  'south korea': 'asia', 'north korea': 'asia', 'kenya': 'kenya', 'japan': 'japan',
+  'ecuador': 'ecuador', 'egypt': 'egypt', 'south africa': 'southafrica',
+  'portugal': 'portugal', 'spain': 'portugal', 'china': 'china',
+  'south korea': 'china', 'north korea': 'china', // no dedicated Korea data yet — nearest available
+  'kenya': 'kenya', 'japan': 'japan',
+  'armenia': 'armenia', 'australia': 'australia', 'austria': 'austria', 'brazil': 'brazil',
+  'cambodia': 'cambodia', 'india': 'india', 'indonesia': 'indonesia', 'ireland': 'ireland',
+  'italy': 'italy', 'maldives': 'maldives', 'mexico': 'mexico', 'nepal': 'nepal',
+  'peru': 'peru', 'tanzania': 'tanzania', 'thailand': 'thailand', 'tunisia': 'tunisia',
+  'turkey': 'turkey', 'french polynesia': 'frenchpolynesia',
 };
 
 function normalize(s){ return String(s || '').toLowerCase().trim(); }
