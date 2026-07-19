@@ -6,19 +6,20 @@
 //
 // PRICING MODEL — three-tier fallback, in priority order:
 //
-//   1. WEBSITE RATE (best): matches destination + star category, and
-//      PREFERS an exact season/month match (e.g. a December-specific
-//      rate) over an "All Year" rate for the same destination+star,
-//      since peak-season pricing can differ a lot from off-peak.
-//      Falls back to averaging across whatever star categories ARE
-//      entered for that destination if the exact star isn't there.
+//   1. WEBSITE RATE: a published GROUP-tour rate. Gets the 15% custom-
+//      tour markup on top, since it's estimating a bespoke trip from a
+//      fixed-package price. Prefers an exact season/month match over
+//      an "All Year" rate, and prefers the requested star category
+//      (falling back to any star for that destination).
 //
-//   2. INVOICE HISTORY (fallback while website rates are still being
-//      filled in): real historical per-day rates from
-//      savitar-rate-history.json, escalated 10%/year (compounding) for
-//      older data. Also prefers historical invoices from the SAME
-//      travel month when there are enough of them, otherwise blends
-//      across all months for that destination.
+//   2. INVOICE HISTORY: real prices actually charged for CUSTOM trips
+//      — this is already a sell price, so it gets NO markup on top.
+//      If the historical invoice's travel year matches (or is later
+//      than) the requested travel year, used as-is. If the invoice is
+//      from an EARLIER year, escalated 5% per year of gap via
+//      dividing by 0.95 (compounding), reflecting a small annual price
+//      increase rather than treating it as a cost needing a margin.
+//      Prefers same-travel-month historical invoices when available.
 //
 //   3. NO DATA YET: if neither source has anything, the widget shows a
 //      "we don't have this yet, please contact us" message instead of
@@ -29,7 +30,8 @@
 // Either or both can be missing/empty — the code handles that.
 // ─────────────────────────────────────────────────────────
 
-const CUSTOM_TOUR_MARKUP = 1.15; // 15% — flat for launch
+const CUSTOM_TOUR_MARKUP = 1.15;   // 15% — ONLY applied to Website Rates (published group price)
+const YEARLY_ESCALATION = 0.95;    // invoice-history escalation: rate ÷ 0.95 per year of gap (≈ +5.26%/yr)
 
 let WEBSITE_RATES = [];
 try { WEBSITE_RATES = require('./website-rates.json'); } catch (e) { WEBSITE_RATES = []; }
@@ -37,10 +39,8 @@ try { WEBSITE_RATES = require('./website-rates.json'); } catch (e) { WEBSITE_RAT
 let RATE_HISTORY = [];
 try { RATE_HISTORY = require('./savitar-rate-history.json'); } catch (e) { RATE_HISTORY = []; }
 
-// Maps full country names (what the widget sends) to the older bucket
-// keys used by the invoice-history generator. Some buckets combine two
-// countries — carried over from an earlier curated destination list,
-// an approximation for the invoice-history fallback only.
+// Maps full country names (what the widget sends) to the bucket keys
+// used by the invoice-history dataset.
 const COUNTRY_TO_HISTORY_BUCKET = {
   'iceland': 'iceland', 'croatia': 'croatia', 'morocco': 'morocco', 'greece': 'greece',
   'ecuador': 'ecuador', 'egypt': 'egypt', 'south africa': 'southafrica',
@@ -61,18 +61,16 @@ function fromWebsiteRates(destination, star, month){
   const matchesDest = WEBSITE_RATES.filter(function(r){ return normalize(r.destination) === dest; });
   if (!matchesDest.length) return null;
 
-  // Prefer the requested star category; fall back to any star for this destination
   const starMatches = matchesDest.filter(function(r){ return String(r.star) === String(star); });
   const starPool = starMatches.length ? starMatches : matchesDest;
 
-  // Within that, prefer an exact month/season match over "All Year" entries
   const monthExact = starPool.filter(function(r){ return String(r.month || '') === String(month || ''); });
   const allYear = starPool.filter(function(r){ return !r.month; });
   const pool = monthExact.length ? monthExact : (allYear.length ? allYear : starPool);
 
   const avg = pool.reduce(function(sum, r){ return sum + parseFloat(r.rate); }, 0) / pool.length;
   return {
-    rate: avg,
+    rate: avg * CUSTOM_TOUR_MARKUP, // markup applied here — this source needs it
     exactStarMatch: starMatches.length > 0,
     exactMonthMatch: monthExact.length > 0,
     source: 'website'
@@ -87,8 +85,6 @@ function fromInvoiceHistory(destination, targetYear, targetMonth){
 
   const year = targetYear || (new Date().getFullYear() + 1);
 
-  // Prefer historical invoices from the same travel month, if there are
-  // any; otherwise blend across whatever months exist for this destination.
   const monthMatches = targetMonth
     ? matches.filter(function(p){ return p.travelMonth && parseInt(p.travelMonth,10) === parseInt(targetMonth,10); })
     : [];
@@ -96,11 +92,13 @@ function fromInvoiceHistory(destination, targetYear, targetMonth){
 
   const escalated = pool.map(function(p){
     const gap = year - p.travelYear;
-    return gap > 0 ? p.perPersonPerDay * Math.pow(1.10, gap) : p.perPersonPerDay;
+    // Same year or later historical data → use the real sell price as-is.
+    // Older data → +5%/year via dividing by 0.95, compounding.
+    return gap > 0 ? p.perPersonPerDay / Math.pow(YEARLY_ESCALATION, gap) : p.perPersonPerDay;
   });
   const avg = escalated.reduce(function(a,b){ return a+b; }, 0) / escalated.length;
   return {
-    rate: avg,
+    rate: avg, // NO markup — this is already a real sell price
     exactStarMatch: false,
     exactMonthMatch: monthMatches.length > 0,
     source: 'invoiceHistory'
@@ -129,12 +127,13 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const markedUpRate = found.rate * CUSTOM_TOUR_MARKUP;
-    const total = markedUpRate * numNights * numPax;
+    const perPersonTotal = found.rate * numNights;
+    const groupTotal = perPersonTotal * numPax;
 
     res.status(200).json({
-      total: Math.round(total),
-      perPersonPerNight: Math.round(markedUpRate * 100) / 100,
+      perPersonTotal: Math.round(perPersonTotal),
+      total: Math.round(groupTotal),
+      perPersonPerNight: Math.round(found.rate * 100) / 100,
       matched: true,
       exactStarMatch: found.exactStarMatch,
       exactMonthMatch: found.exactMonthMatch,
