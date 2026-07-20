@@ -6,19 +6,23 @@
 //
 // PRICING MODEL — three-tier fallback, in priority order:
 //
-//   1. WEBSITE RATE: a published GROUP-tour rate. Gets the 15% custom-
-//      tour markup on top, since it's estimating a bespoke trip from a
-//      fixed-package price. Prefers an exact season/month match over
-//      an "All Year" rate, and prefers the requested star category
-//      (falling back to any star for that destination).
+//   1. WEBSITE RATE: a published GROUP-tour rate, so it gets a markup
+//      to estimate a bespoke/private trip — AND that markup itself
+//      climbs each year out from today, since website rates are
+//      always "current" published prices with no built-in inflation:
+//        2026 (baseline) → +15%
+//        2027            → +20%
+//        2028            → +25%
+//        ...+5% per year beyond the baseline
+//      Prefers an exact season/month match over an "All Year" rate,
+//      and the requested star category (falling back to any star).
 //
-//   2. INVOICE HISTORY: real prices actually charged for CUSTOM trips
-//      — this is already a sell price, so it gets NO markup on top.
-//      If the historical invoice's travel year matches (or is later
-//      than) the requested travel year, used as-is. If the invoice is
-//      from an EARLIER year, escalated 5% per year of gap via
-//      dividing by 0.95 (compounding), reflecting a small annual price
-//      increase rather than treating it as a cost needing a margin.
+//   2. INVOICE HISTORY: real prices actually charged for CUSTOM/private
+//      trips — this is already private-trip pricing, so it gets NO
+//      extra markup at all. If the historical invoice's travel year
+//      matches (or is later than) the requested travel year, used
+//      as-is. If the invoice is from an EARLIER year, escalated 5%
+//      per year of gap via dividing by 0.95 (compounding).
 //      Prefers same-travel-month historical invoices when available.
 //
 //   3. NO DATA YET: if neither source has anything, the widget shows a
@@ -30,8 +34,16 @@
 // Either or both can be missing/empty — the code handles that.
 // ─────────────────────────────────────────────────────────
 
-const CUSTOM_TOUR_MARKUP = 1.15;   // 15% — ONLY applied to Website Rates (published group price)
-const YEARLY_ESCALATION = 0.95;    // invoice-history escalation: rate ÷ 0.95 per year of gap (≈ +5.26%/yr)
+const WEBSITE_MARKUP_BASE_YEAR = 2026; // bump this forward each year
+const WEBSITE_MARKUP_BASE = 1.15;      // +15% in the base year
+const WEBSITE_MARKUP_PER_YEAR = 0.05;  // +5 percentage points per year beyond the base year
+const YEARLY_ESCALATION = 0.95;        // invoice-history escalation: rate ÷ 0.95 per year of gap (≈ +5.26%/yr)
+
+function websiteMarkupForYear(targetYear){
+  const year = targetYear || (new Date().getFullYear() + 1);
+  const yearsOut = Math.max(0, year - WEBSITE_MARKUP_BASE_YEAR);
+  return WEBSITE_MARKUP_BASE + WEBSITE_MARKUP_PER_YEAR * yearsOut;
+}
 
 let WEBSITE_RATES = [];
 try { WEBSITE_RATES = require('./website-rates.json'); } catch (e) { WEBSITE_RATES = []; }
@@ -56,7 +68,7 @@ const COUNTRY_TO_HISTORY_BUCKET = {
 
 function normalize(s){ return String(s || '').toLowerCase().trim(); }
 
-function fromWebsiteRates(destination, star, month){
+function fromWebsiteRates(destination, star, month, occupancy){
   const dest = normalize(destination);
   const matchesDest = WEBSITE_RATES.filter(function(r){ return normalize(r.destination) === dest; });
   if (!matchesDest.length) return null;
@@ -64,13 +76,17 @@ function fromWebsiteRates(destination, star, month){
   const starMatches = matchesDest.filter(function(r){ return String(r.star) === String(star); });
   const starPool = starMatches.length ? starMatches : matchesDest;
 
-  const monthExact = starPool.filter(function(r){ return String(r.month || '') === String(month || ''); });
-  const allYear = starPool.filter(function(r){ return !r.month; });
-  const pool = monthExact.length ? monthExact : (allYear.length ? allYear : starPool);
+  // Prefer the requested occupancy (double/single); fall back to whichever exists
+  const occMatches = starPool.filter(function(r){ return String(r.occupancy || 'double') === String(occupancy); });
+  const occPool = occMatches.length ? occMatches : starPool;
+
+  const monthExact = occPool.filter(function(r){ return String(r.month || '') === String(month || ''); });
+  const allYear = occPool.filter(function(r){ return !r.month; });
+  const pool = monthExact.length ? monthExact : (allYear.length ? allYear : occPool);
 
   const avg = pool.reduce(function(sum, r){ return sum + parseFloat(r.rate); }, 0) / pool.length;
   return {
-    rate: avg * CUSTOM_TOUR_MARKUP, // markup applied here — this source needs it
+    rate: avg, // markup now applied uniformly at the top level, regardless of source
     exactStarMatch: starMatches.length > 0,
     exactMonthMatch: monthExact.length > 0,
     source: 'website'
@@ -118,8 +134,9 @@ module.exports = async (req, res) => {
     const numPax = Math.max(1, parseInt(pax, 10) || 1);
     const starCategory = star || '4';
     const month = travelMonth ? parseInt(travelMonth, 10) : null;
+    const occupancy = numPax <= 1 ? 'single' : 'double';
 
-    let found = fromWebsiteRates(destination, starCategory, month);
+    let found = fromWebsiteRates(destination, starCategory, month, occupancy);
     if (!found) found = fromInvoiceHistory(destination, parseInt(travelYear, 10), month);
 
     if (!found) {
@@ -127,13 +144,19 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const perPersonTotal = found.rate * numNights;
+    // Website rates get the year-based markup; invoice history gets none —
+    // it's already real private-trip pricing, only escalated for data age.
+    const finalRate = found.source === 'website'
+      ? found.rate * websiteMarkupForYear(parseInt(travelYear, 10))
+      : found.rate;
+
+    const perPersonTotal = finalRate * numNights;
     const groupTotal = perPersonTotal * numPax;
 
     res.status(200).json({
       perPersonTotal: Math.round(perPersonTotal),
       total: Math.round(groupTotal),
-      perPersonPerNight: Math.round(found.rate * 100) / 100,
+      perPersonPerNight: Math.round(finalRate * 100) / 100,
       matched: true,
       exactStarMatch: found.exactStarMatch,
       exactMonthMatch: found.exactMonthMatch,
