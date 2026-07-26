@@ -1,12 +1,5 @@
-// api/estimate-summary-test.js — TEST ONLY (debug version), does not touch your real estimate-summary.js
+// api/estimate-summary-test.js — TEST ONLY (debug version)
 // ─────────────────────────────────────────────────────────
-// This is the SECOND half of the split quote flow:
-//   1. Widget calls estimate first → gets the real price INSTANTLY.
-//   2. Widget then calls THIS endpoint in the background with the same
-//      trip details plus the price it just got back → asks Kimi for a
-//      short warm Markdown summary.
-// ─────────────────────────────────────────────────────────
-
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
 const KIMI_TIMEOUT_MS = 27000;
@@ -66,7 +59,7 @@ async function getKimiSummary({ destination, star, nights, pax, travelYear, trav
           { role: 'user', content: userPrompt }
         ],
         temperature: 1,
-        max_tokens: 300
+        max_tokens: 1500
       }),
       signal: controller.signal
     });
