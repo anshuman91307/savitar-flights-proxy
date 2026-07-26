@@ -32,16 +32,19 @@
 // Both website-rates.json and savitar-rate-history.json need to be
 // copied into this same /api folder for the requires below to work.
 // Either or both can be missing/empty — the code handles that.
+//
+// NOTE ON THE AI SUMMARY: this endpoint intentionally does NOT call
+// Kimi/Moonshot at all anymore — that logic lives in the separate
+// api/estimate-summary.js endpoint instead, so the widget can show this
+// price INSTANTLY and fetch the AI blurb afterward in the background.
+// Kimi's response time is inconsistent (a few seconds to 20+ seconds),
+// and a customer should never have to wait on that just to see a price.
 // ─────────────────────────────────────────────────────────
 
 const WEBSITE_MARKUP_BASE_YEAR = 2026;
 const WEBSITE_MARKUP_BASE = 1.15;
 const WEBSITE_MARKUP_PER_YEAR = 0.05;
 const YEARLY_ESCALATION = 0.95;
-
-const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
-const KIMI_MODEL = 'kimi-k2.6';
-const KIMI_TIMEOUT_MS = 27000;
 
 function websiteMarkupForYear(targetYear){
   const year = targetYear || (new Date().getFullYear() + 1);
@@ -67,8 +70,6 @@ const COUNTRY_TO_HISTORY_BUCKET = {
   'peru': 'peru', 'tanzania': 'tanzania', 'thailand': 'thailand', 'tunisia': 'tunisia',
   'turkey': 'turkey', 'french polynesia': 'frenchpolynesia',
 };
-
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function normalize(s){ return String(s || '').toLowerCase().trim(); }
 
@@ -122,14 +123,46 @@ function fromInvoiceHistory(destination, targetYear, targetMonth){
   };
 }
 
-async function getKimiSummary({ destination, star, nights, pax, travelYear, travelMonth, perPersonTotal, groupTotal }){
-  const apiKey = process.env.KIMI_API_KEY;
-  if (!apiKey) return null;
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
+  if (req.method !== 'POST') { res.status(405).json({ error: 'POST only' }); return; }
 
-  const monthName = travelMonth ? MONTH_NAMES[parseInt(travelMonth, 10) - 1] : null;
-  const whenText = [monthName, travelYear].filter(Boolean).join(' ') || 'their preferred travel window';
+  try {
+    const { destination, star, nights, pax, travelYear, travelMonth } = req.body || {};
+    const numNights = Math.max(1, parseInt(nights, 10) || 1);
+    const numPax = Math.max(1, parseInt(pax, 10) || 1);
+    const starCategory = star || '4';
+    const month = travelMonth ? parseInt(travelMonth, 10) : null;
+    const occupancy = numPax <= 1 ? 'single' : 'double';
 
-  const systemPrompt = 'You are the pricing voice for a luxury travel agency (Savitar Tours). Read the traveller\'s '
-    + 'preferences and the price already calculated for them, then write a short, warm, beautifully formatted '
-    + 'summary in Markdown (2-4 sentences, plus the price clearly stated). Make it feel personal and evocative, '
-    + 'not like a generic
+    let found = fromWebsiteRates(destination, starCategory, month, occupancy);
+    if (!found) found = fromInvoiceHistory(destination, parseInt(travelYear, 10), month);
+
+    if (!found) {
+      res.status(200).json({ noData: true });
+      return;
+    }
+
+    const finalRate = found.source === 'website'
+      ? found.rate * websiteMarkupForYear(parseInt(travelYear, 10))
+      : found.rate;
+
+    const perPersonTotal = Math.round(finalRate * numNights);
+    const groupTotal = Math.round(perPersonTotal * numPax);
+
+    res.status(200).json({
+      perPersonTotal: perPersonTotal,
+      total: groupTotal,
+      perPersonPerNight: Math.round(finalRate * 100) / 100,
+      matched: true,
+      exactStarMatch: found.exactStarMatch,
+      exactMonthMatch: found.exactMonthMatch,
+      source: found.source
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'estimate failed' });
+  }
+};
