@@ -41,7 +41,7 @@ const YEARLY_ESCALATION = 0.95;
 
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
-const KIMI_TIMEOUT_MS = 15000; // don't let a slow AI call hold up the whole estimate
+const KIMI_TIMEOUT_MS = 15000;
 
 function websiteMarkupForYear(targetYear){
   const year = targetYear || (new Date().getFullYear() + 1);
@@ -179,6 +179,11 @@ async function getKimiSummary({ destination, star, nights, pax, travelYear, trav
     clearTimeout(timeout);
   }
 }
+
+// Explicitly request extra execution time from Vercel (default can be as
+// low as 10s, which isn't enough for an AI API round trip). 30s comfortably
+// covers this call while staying within Hobby plan's allowed 1-60s range.
+module.exports.config = { maxDuration: 30 };
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
