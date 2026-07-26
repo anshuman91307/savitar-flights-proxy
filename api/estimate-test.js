@@ -40,8 +40,8 @@ const WEBSITE_MARKUP_PER_YEAR = 0.05;
 const YEARLY_ESCALATION = 0.95;
 
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
-const KIMI_MODEL = 'kimi-k3';
-const KIMI_TIMEOUT_MS = 8000;
+const KIMI_MODEL = 'kimi-k2.6';
+const KIMI_TIMEOUT_MS = 15000; // don't let a slow AI call hold up the whole estimate
 
 function websiteMarkupForYear(targetYear){
   const year = targetYear || (new Date().getFullYear() + 1);
