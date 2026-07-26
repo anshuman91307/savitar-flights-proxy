@@ -40,7 +40,7 @@ const WEBSITE_MARKUP_PER_YEAR = 0.05;
 const YEARLY_ESCALATION = 0.95;
 
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
-const KIMI_MODEL = 'moonshot-v1-8k';
+const KIMI_MODEL = 'kimi-k3';
 const KIMI_TIMEOUT_MS = 8000;
 
 function websiteMarkupForYear(targetYear){
