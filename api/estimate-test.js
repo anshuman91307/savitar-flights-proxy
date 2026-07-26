@@ -195,15 +195,24 @@ async function getKimiSummary({ destination, star, nights, pax, travelYear, trav
   }
 }
 
+// TEST-ONLY FILE — a copy of estimate.js with one addition: it also accepts
+// plain GET requests with URL query parameters, so it can be tested just by
+// pasting a link into a browser (no Postman/curl needed). Your real widget
+// keeps using the untouched, unchanged api/estimate.js — this file is purely
+// a side-by-side testing copy at a different URL:
+//   https://savitar-flights-proxy.vercel.app/api/estimate-test
+//     ?destination=Argentina&star=4&nights=7&pax=2&travelYear=2026&travelMonth=7
+// Delete this file once you're done testing — it's not meant to be permanent.
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
-  if (req.method !== 'POST') { res.status(405).json({ error: 'POST only' }); return; }
+  if (req.method !== 'POST' && req.method !== 'GET') { res.status(405).json({ error: 'GET or POST only' }); return; }
 
   try {
-    const { destination, star, nights, pax, travelYear, travelMonth } = req.body || {};
+    const source = req.method === 'GET' ? (req.query || {}) : (req.body || {});
+    const { destination, star, nights, pax, travelYear, travelMonth } = source;
     const numNights = Math.max(1, parseInt(nights, 10) || 1);
     const numPax = Math.max(1, parseInt(pax, 10) || 1);
     const starCategory = star || '4';
