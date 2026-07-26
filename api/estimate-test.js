@@ -161,7 +161,7 @@ async function getKimiSummary({ destination, star, nights, pax, travelYear, trav
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.7
+        temperature: 1
       }),
       signal: controller.signal
     });
