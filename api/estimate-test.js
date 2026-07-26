@@ -1,9 +1,5 @@
-// api/estimate.js
+// api/estimate-fast-test.js — TEST ONLY, does not touch your real estimate.js
 // ─────────────────────────────────────────────────────────
-// Deploy alongside your existing savitar-flights-proxy project on
-// Vercel. Reachable at:
-//   https://savitar-flights-proxy.vercel.app/api/estimate
-//
 // PRICING MODEL — three-tier fallback, in priority order:
 //
 //   1. WEBSITE RATE: a published GROUP-tour rate, so it gets a markup
@@ -19,26 +15,14 @@
 //
 //   2. INVOICE HISTORY: real prices actually charged for CUSTOM/private
 //      trips — this is already private-trip pricing, so it gets NO
-//      extra markup at all. If the historical invoice's travel year
-//      matches (or is later than) the requested travel year, used
-//      as-is. If the invoice is from an EARLIER year, escalated 5%
-//      per year of gap via dividing by 0.95 (compounding).
-//      Prefers same-travel-month historical invoices when available.
+//      extra markup at all.
 //
-//   3. NO DATA YET: if neither source has anything, the widget shows a
-//      "we don't have this yet, please contact us" message instead of
-//      a fabricated number.
+//   3. NO DATA YET: if neither source has anything, shows "contact us"
+//      instead of a fabricated number.
 //
-// Both website-rates.json and savitar-rate-history.json need to be
-// copied into this same /api folder for the requires below to work.
-// Either or both can be missing/empty — the code handles that.
-//
-// NOTE ON THE AI SUMMARY: this endpoint intentionally does NOT call
-// Kimi/Moonshot at all anymore — that logic lives in the separate
-// api/estimate-summary.js endpoint instead, so the widget can show this
-// price INSTANTLY and fetch the AI blurb afterward in the background.
-// Kimi's response time is inconsistent (a few seconds to 20+ seconds),
-// and a customer should never have to wait on that just to see a price.
+// NOTE: this endpoint does NOT call Kimi/Moonshot at all — that logic
+// lives in the separate estimate-summary endpoint, so this one is always
+// instant.
 // ─────────────────────────────────────────────────────────
 
 const WEBSITE_MARKUP_BASE_YEAR = 2026;
@@ -125,13 +109,14 @@ function fromInvoiceHistory(destination, targetYear, targetMonth){
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
-  if (req.method !== 'POST') { res.status(405).json({ error: 'POST only' }); return; }
+  if (req.method !== 'POST' && req.method !== 'GET') { res.status(405).json({ error: 'GET or POST only' }); return; }
 
   try {
-    const { destination, star, nights, pax, travelYear, travelMonth } = req.body || {};
+    const source = req.method === 'GET' ? (req.query || {}) : (req.body || {});
+    const { destination, star, nights, pax, travelYear, travelMonth } = source;
     const numNights = Math.max(1, parseInt(nights, 10) || 1);
     const numPax = Math.max(1, parseInt(pax, 10) || 1);
     const starCategory = star || '4';
