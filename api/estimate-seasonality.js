@@ -1,4 +1,4 @@
-// api/estimate-seasonality.js — DEBUG VERSION (temporary, to see Kimi's raw response)
+// api/estimate-seasonality.js (fixed, clean — not the debug version)
 // ─────────────────────────────────────────────────────────
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
@@ -56,22 +56,17 @@ async function getSeasonality({ destination, travelYear, travelMonth }){
         model: KIMI_MODEL,
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
         temperature: 1,
-        max_tokens: 600
+        max_tokens: 1500
       }),
       signal: controller.signal
     });
-    if (!resp.ok) {
-      const errBody = await resp.text();
-      return { score: null, bestFor: null, caveat: null, alternativeMonth: null, debugError: 'HTTP ' + resp.status + ': ' + errBody.slice(0,300) };
-    }
+    if (!resp.ok) return null;
     const data = await resp.json();
     const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    if (!text) return { score: null, bestFor: null, caveat: null, alternativeMonth: null, debugError: 'Kimi returned no text at all. Full response: ' + JSON.stringify(data).slice(0,300) };
-    var parsed = parseSeasonalityText(text);
-    parsed.debugRawText = text; // TEMPORARY: shows exactly what Kimi said, to check it matches the expected format
-    return parsed;
+    if (!text) return null;
+    return parseSeasonalityText(text);
   } catch (e) {
-    return { score: null, bestFor: null, caveat: null, alternativeMonth: null, debugError: 'Exception: ' + e.message };
+    return null;
   } finally {
     clearTimeout(timeout);
   }
