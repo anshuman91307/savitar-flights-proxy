@@ -53,7 +53,7 @@ async function getPriceReason({ destination, star, nights, travelYear, travelMon
         model: KIMI_MODEL,
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
         temperature: 1,
-        max_tokens: 500
+        max_tokens: 1500
       }),
       signal: controller.signal
     });
