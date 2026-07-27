@@ -1,4 +1,4 @@
-// api/estimate-itinerary-teaser.js — DEBUG VERSION (temporary, to see Kimi's raw response)
+// api/estimate-itinerary-teaser.js (clean version — replace the debug one with this)
 // ─────────────────────────────────────────────────────────
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
@@ -70,17 +70,13 @@ async function getItineraryTeaser({ destination, star, nights, pax, travelMonth 
       }),
       signal: controller.signal
     });
-    if (!resp.ok) {
-      const errBody = await resp.text();
-      return { days: [], debugError: 'HTTP ' + resp.status + ': ' + errBody.slice(0,300) };
-    }
+    if (!resp.ok) return [];
     const data = await resp.json();
     const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    if (!text) return { days: [], debugError: 'Kimi returned no text. Full response: ' + JSON.stringify(data).slice(0,400) };
-    var parsedDays = parseItineraryText(text);
-    return { days: parsedDays, debugRawText: text };
+    if (!text) return [];
+    return parseItineraryText(text);
   } catch (e) {
-    return { days: [], debugError: 'Exception: ' + e.message };
+    return [];
   } finally {
     clearTimeout(timeout);
   }
@@ -109,8 +105,7 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const result = await getItineraryTeaser(tripArgs);
-    const days = result.days || [];
+    const days = await getItineraryTeaser(tripArgs);
 
     if (days.length) {
       if (teaserCache.size >= CACHE_MAX_ENTRIES) {
@@ -120,7 +115,7 @@ module.exports = async (req, res) => {
       teaserCache.set(key, days);
     }
 
-    res.status(200).json({ days: days, cached: false, debugRawText: result.debugRawText, debugError: result.debugError });
+    res.status(200).json({ days: days, cached: false });
   } catch (e) {
     res.status(200).json({ days: [], cached: false });
   }
