@@ -1,16 +1,5 @@
-// api/estimate-summary.js
+// api/estimate-summary.js — DEBUG VERSION (temporary, to find the real cause)
 // ─────────────────────────────────────────────────────────
-// Deploy alongside api/estimate.js in the same savitar-flights-proxy
-// project on Vercel. Reachable at:
-//   https://savitar-flights-proxy.vercel.app/api/estimate-summary
-//
-// This is the SECOND half of the split quote flow:
-//   1. Widget calls /api/estimate first → gets the real price INSTANTLY.
-//   2. Widget then calls THIS endpoint in the background with the same
-//      trip details plus the price it just got back → asks Kimi for a
-//      short warm Markdown summary to display once it arrives.
-// ─────────────────────────────────────────────────────────
-
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
 const KIMI_TIMEOUT_MS = 27000;
@@ -23,16 +12,13 @@ const CACHE_MAX_ENTRIES = 500;
 function cacheKeyFor({ destination, star, nights, travelYear, travelMonth }){
   return [
     String(destination || '').toLowerCase().trim(),
-    'star' + star,
-    'nights' + nights,
-    'year' + (travelYear || ''),
-    'month' + (travelMonth || '')
+    'star' + star, 'nights' + nights, 'year' + (travelYear || ''), 'month' + (travelMonth || '')
   ].join('|');
 }
 
 async function getKimiSummary({ destination, star, nights, pax, travelYear, travelMonth, perPersonTotal, groupTotal }){
   const apiKey = process.env.KIMI_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { debugError: 'KIMI_API_KEY not set in this environment' };
 
   const monthName = travelMonth ? MONTH_NAMES[parseInt(travelMonth, 10) - 1] : null;
   const whenText = [monthName, travelYear].filter(Boolean).join(' ') || 'their preferred travel window';
@@ -75,12 +61,15 @@ async function getKimiSummary({ destination, star, nights, pax, travelYear, trav
       signal: controller.signal
     });
 
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      return { debugError: 'HTTP ' + resp.status + ': ' + errBody.slice(0, 300) };
+    }
     const data = await resp.json();
     const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    return text || null;
+    return text || { debugError: 'Kimi responded OK but unexpected shape: ' + JSON.stringify(data).slice(0,300) };
   } catch (e) {
-    return null;
+    return { debugError: 'Exception: ' + e.message };
   } finally {
     clearTimeout(timeout);
   }
@@ -112,7 +101,7 @@ module.exports = async (req, res) => {
 
     const aiSummary = await getKimiSummary(tripArgs);
 
-    if (aiSummary) {
+    if (typeof aiSummary === 'string') {
       if (summaryCache.size >= CACHE_MAX_ENTRIES) {
         const oldestKey = summaryCache.keys().next().value;
         summaryCache.delete(oldestKey);
@@ -122,6 +111,6 @@ module.exports = async (req, res) => {
 
     res.status(200).json({ aiSummary: aiSummary, cached: false });
   } catch (e) {
-    res.status(200).json({ aiSummary: null });
+    res.status(200).json({ aiSummary: { debugError: 'Outer exception: ' + e.message } });
   }
 };
