@@ -1,13 +1,5 @@
-// api/estimate-seasonality.js
+// api/estimate-seasonality.js — DEBUG VERSION (temporary, to see Kimi's raw response)
 // ─────────────────────────────────────────────────────────
-// Small badge next to the date picker rating how good the chosen month
-// is for this destination. Uses a PLAIN TEXT response format (not JSON)
-// parsed with simple string splits — avoids the risk of Kimi wrapping
-// JSON in markdown fences or adding a preamble.
-// Reachable at:
-//   https://savitar-flights-proxy.vercel.app/api/estimate-seasonality
-// ─────────────────────────────────────────────────────────
-
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
 const KIMI_TIMEOUT_MS = 27000;
@@ -68,13 +60,18 @@ async function getSeasonality({ destination, travelYear, travelMonth }){
       }),
       signal: controller.signal
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      return { score: null, bestFor: null, caveat: null, alternativeMonth: null, debugError: 'HTTP ' + resp.status + ': ' + errBody.slice(0,300) };
+    }
     const data = await resp.json();
     const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    if (!text) return null;
-    return parseSeasonalityText(text);
+    if (!text) return { score: null, bestFor: null, caveat: null, alternativeMonth: null, debugError: 'Kimi returned no text at all. Full response: ' + JSON.stringify(data).slice(0,300) };
+    var parsed = parseSeasonalityText(text);
+    parsed.debugRawText = text; // TEMPORARY: shows exactly what Kimi said, to check it matches the expected format
+    return parsed;
   } catch (e) {
-    return null;
+    return { score: null, bestFor: null, caveat: null, alternativeMonth: null, debugError: 'Exception: ' + e.message };
   } finally {
     clearTimeout(timeout);
   }
