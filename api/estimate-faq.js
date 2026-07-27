@@ -10,7 +10,7 @@
 
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
-const KIMI_TIMEOUT_MS = 27000;
+const KIMI_TIMEOUT_MS = 52000;
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -68,7 +68,7 @@ async function getFaqAnswer({ question, destination, nights, travelMonth, travel
   }
 }
 
-module.exports.config = { maxDuration: 30 };
+module.exports.config = { maxDuration: 55 };
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
