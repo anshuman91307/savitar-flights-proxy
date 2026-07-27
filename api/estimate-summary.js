@@ -1,4 +1,4 @@
-// api/estimate-summary.js — DEBUG VERSION (temporary, to find the real cause)
+// api/estimate-summary.js
 // ─────────────────────────────────────────────────────────
 const KIMI_API_URL = 'https://api.moonshot.ai/v1/chat/completions';
 const KIMI_MODEL = 'kimi-k2.6';
@@ -18,7 +18,7 @@ function cacheKeyFor({ destination, star, nights, travelYear, travelMonth }){
 
 async function getKimiSummary({ destination, star, nights, pax, travelYear, travelMonth, perPersonTotal, groupTotal }){
   const apiKey = process.env.KIMI_API_KEY;
-  if (!apiKey) return { debugError: 'KIMI_API_KEY not set in this environment' };
+  if (!apiKey) return null;
 
   const monthName = travelMonth ? MONTH_NAMES[parseInt(travelMonth, 10) - 1] : null;
   const whenText = [monthName, travelYear].filter(Boolean).join(' ') || 'their preferred travel window';
@@ -61,15 +61,12 @@ async function getKimiSummary({ destination, star, nights, pax, travelYear, trav
       signal: controller.signal
     });
 
-    if (!resp.ok) {
-      const errBody = await resp.text();
-      return { debugError: 'HTTP ' + resp.status + ': ' + errBody.slice(0, 300) };
-    }
+    if (!resp.ok) return null;
     const data = await resp.json();
     const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    return text || { debugError: 'Kimi responded OK but unexpected shape: ' + JSON.stringify(data).slice(0,300) };
+    return text || null;
   } catch (e) {
-    return { debugError: 'Exception: ' + e.message };
+    return null;
   } finally {
     clearTimeout(timeout);
   }
@@ -101,7 +98,7 @@ module.exports = async (req, res) => {
 
     const aiSummary = await getKimiSummary(tripArgs);
 
-    if (typeof aiSummary === 'string') {
+    if (aiSummary) {
       if (summaryCache.size >= CACHE_MAX_ENTRIES) {
         const oldestKey = summaryCache.keys().next().value;
         summaryCache.delete(oldestKey);
@@ -111,6 +108,6 @@ module.exports = async (req, res) => {
 
     res.status(200).json({ aiSummary: aiSummary, cached: false });
   } catch (e) {
-    res.status(200).json({ aiSummary: { debugError: 'Outer exception: ' + e.message } });
+    res.status(200).json({ aiSummary: null });
   }
 };
